@@ -11,7 +11,7 @@ from app.core.logging import get_logger
 
 logger = get_logger(__name__)
 
-_SCOPES = ["https://graph.microsoft.com/Mail.Read", "https://graph.microsoft.com/Mail.Send"]
+_SCOPES = ["https://graph.microsoft.com/Mail.ReadWrite", "https://graph.microsoft.com/Mail.Send"]
 _token_cache = msal.SerializableTokenCache()
 _cached_token: str | None = None
 
@@ -72,6 +72,79 @@ async def fetch_inbox_messages(top: int = 25) -> list[dict[str, Any]]:
         )
         resp.raise_for_status()
         return resp.json().get("value", [])
+
+
+_URGENCY_TO_IMPORTANCE = {"high": "high", "medium": "normal", "low": "low"}
+_URGENCY_TO_CATEGORY = {"high": "High Urgency", "medium": "Medium Urgency", "low": "Low Urgency"}
+_CATEGORY_COLOURS = {
+    "High Urgency": "red",
+    "Medium Urgency": "yellow",
+    "Low Urgency": "green",
+}
+
+
+async def ensure_categories() -> None:
+    """Create urgency colour categories in Outlook if supported (work/school accounts only)."""
+    token = get_access_token()
+    if not token:
+        return
+    url = f"{settings.graph_api_base}/me/outlook/masterCategories"
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(url, headers={"Authorization": f"Bearer {token}"}, timeout=15)
+            if resp.status_code == 403:
+                logger.info("masterCategories not supported for this account type — skipping colour categories")
+                return
+            resp.raise_for_status()
+            existing = {c["displayName"] for c in resp.json().get("value", [])}
+
+            for name, colour in _CATEGORY_COLOURS.items():
+                if name not in existing:
+                    await client.post(
+                        url,
+                        headers={
+                            "Authorization": f"Bearer {token}",
+                            "Content-Type": "application/json",
+                        },
+                        json={"displayName": name, "color": colour},
+                        timeout=15,
+                    )
+                    logger.info("Created Outlook category: %s (%s)", name, colour)
+    except Exception as exc:
+        logger.warning("Could not create Outlook categories: %s", exc)
+
+
+async def set_message_importance(message_id: str, urgency: str) -> None:
+    """Tag a message with an importance flag and colour category based on AI urgency."""
+    token = get_access_token()
+    if not token:
+        return  # silently skip if not authenticated
+    importance = _URGENCY_TO_IMPORTANCE.get(urgency, "normal")
+    category = _URGENCY_TO_CATEGORY.get(urgency, "Medium Urgency")
+    url = f"{settings.graph_api_base}/me/messages/{message_id}"
+    async with httpx.AsyncClient() as client:
+        # Try with categories first, fall back to importance only if categories are unsupported
+        resp = await client.patch(
+            url,
+            headers={
+                "Authorization": f"Bearer {token}",
+                "Content-Type": "application/json",
+            },
+            json={"importance": importance, "categories": [category]},
+            timeout=15,
+        )
+        if resp.status_code == 403:
+            resp = await client.patch(
+                url,
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "Content-Type": "application/json",
+                },
+                json={"importance": importance},
+                timeout=15,
+            )
+        resp.raise_for_status()
+    logger.info("Set importance=%s category=%s on message %s", importance, category, message_id)
 
 
 async def send_message(to: list[str], subject: str, body: str) -> None:
