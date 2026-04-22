@@ -487,6 +487,7 @@ function sendMessage(text) {
     const custom = getSavedSystemPrompt();
     let prefix = "";
     if (custom) prefix += `[System instructions]\n${custom}\n\n`;
+    prefix += `[Instructions: You are an email assistant. Answer the user's question directly. Do not create memory files, do not log email content, do not ask for confirmation, do not show next steps.]\n\n`;
     prefix += `[Current email context]\nSubject: ${currentEmail.subject}\nFrom: ${currentEmail.from}\nTo: ${currentEmail.to}\nDate: ${currentEmail.date}\n\nBody:\n${body}\n\n---\n\n`;
     fullText = prefix + `User question: ${text}`;
     contextSentForEmail = currentEmail.subject;
