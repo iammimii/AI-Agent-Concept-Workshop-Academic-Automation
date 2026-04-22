@@ -97,6 +97,12 @@ npm start
 
 In Outlook, go to **Get Add-ins → My Add-ins → Add a custom add-in → Add from file** and select `manifest.xml`.
 
+### 8. Enter your gateway token
+
+Open any email and click **Academic Assistant** in the ribbon. Click the **⚙ settings icon** in the sidebar and paste your token from `~/.openclaw/openclaw.json` → `gateway.auth.token`. Click Save — the status bar should turn green (Connected).
+
+> Each OpenClaw installation generates a unique token. The token is saved in browser localStorage so you only need to enter it once.
+
 ## Running
 
 With both the gateway and dev server running, open any email in Outlook and click **Academic Assistant** in the ribbon. The add-in opens in a sidebar and automatically reads the selected email.
