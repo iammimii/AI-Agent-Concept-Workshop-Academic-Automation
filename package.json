@@ -9,6 +9,7 @@
     "start": "webpack serve --mode development",
     "sideload": "npx office-addin-dev-certs install && webpack serve --mode development",
     "validate": "npx office-addin-manifest validate manifest.xml",
+    "gateway": "npx --yes openclaw gateway",
     "test": "jest",
     "test:coverage": "jest --coverage",
     "test:unit": "jest tests/unit"

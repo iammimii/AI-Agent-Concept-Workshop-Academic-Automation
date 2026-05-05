@@ -82,7 +82,7 @@ Edit `~/.openclaw/openclaw.json` and add the following under `gateway.controlUi`
 ### 5. Start OpenClaw Gateway
 
 ```bash
-openclaw gateway
+npm run gateway
 ```
 
 Note the gateway token from `~/.openclaw/openclaw.json` → `gateway.auth.token`.
