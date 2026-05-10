@@ -5,14 +5,12 @@ const GW_PORT = 18789;
 const BACKOFF_BASE = 1200;
 const BACKOFF_MAX = 20000;
 
-// Gateway auth token from ~/.openclaw/openclaw.json → gateway.auth.token
-// Used when dangerouslyDisableDeviceAuth=true bypasses the device identity check.
-const GATEWAY_TOKEN = "56a6491a7961caed0b413c43880cbc151181621bf0055047";
 
 // ===== State =====
 let socket = null;
 let isConnected = false;
 let authToken = null;
+let gwPort = 18789;
 let sessionKey = "agent:main:academic-email";
 let activeEmailId = null;
 let currentEmail = null;
@@ -87,20 +85,23 @@ function applyTheme() {
 // ===== Token =====
 
 /**
- * Loads the gateway auth token from localStorage, seeding it with the compiled
- * default if none has been saved yet, then opens the WebSocket connection.
+ * Loads the gateway auth token and port from localStorage. If no token is saved,
+ * shows the settings panel immediately so the user can enter their credentials
+ * before connecting.
  */
 function loadToken() {
   try {
-    const stored = localStorage.getItem("acad-gateway-token");
-    if (!stored) {
-      localStorage.setItem("acad-gateway-token", GATEWAY_TOKEN);
-    }
-    authToken = stored || GATEWAY_TOKEN;
+    authToken = localStorage.getItem("acad-gateway-token") || "";
+    gwPort = parseInt(localStorage.getItem("acad-gateway-port"), 10) || 18789;
   } catch (_) {
-    authToken = GATEWAY_TOKEN;
+    authToken = "";
+    gwPort = 18789;
   }
-  connectGateway();
+  if (!authToken) {
+    showTokenPrompt();
+  } else {
+    connectGateway();
+  }
 }
 
 /**
@@ -120,6 +121,12 @@ function showTokenPrompt() {
       style="width:100%;padding:5px 8px;border:1px solid var(--border);border-radius:4px;
              background:var(--bg-input);color:var(--text-primary);font-size:12px;
              margin-bottom:8px;font-family:monospace"/>
+    <label style="font-size:11px;color:var(--text-secondary)">Gateway Port</label>
+    <input type="number" id="port-field" placeholder="18789"
+      value="${gwPort || 18789}"
+      style="width:100%;padding:5px 8px;border:1px solid var(--border);border-radius:4px;
+             background:var(--bg-input);color:var(--text-primary);font-size:12px;
+             margin-bottom:8px;font-family:monospace"/>
     <label style="font-size:11px;color:var(--text-secondary)">Custom Instructions (optional)</label>
     <textarea id="prompt-field" rows="3"
       placeholder="e.g. Always reply formally. Never use bullet points."
@@ -131,7 +138,7 @@ function showTokenPrompt() {
              border-radius:4px;cursor:pointer;font-size:12px">
       Save &amp; Connect
     </button>
-    <br><small style="color:var(--text-muted)">Token location: ~/.openclaw/openclaw.json → gateway.auth.token</small>
+    <br><small style="color:var(--text-muted)">Token: ~/.openclaw/openclaw.json → gateway.auth.token · Port: default 18789</small>
   </div>`;
   $("chat-messages").appendChild(div);
 
@@ -140,10 +147,15 @@ function showTokenPrompt() {
     if (!btn) return;
     btn.addEventListener("click", () => {
       const t = document.getElementById("token-field").value.trim();
+      const port = parseInt(document.getElementById("port-field").value, 10);
       const p = document.getElementById("prompt-field").value.trim();
       if (t) {
         try { localStorage.setItem("acad-gateway-token", t); } catch (_) {}
         authToken = t;
+      }
+      if (port) {
+        try { localStorage.setItem("acad-gateway-port", String(port)); } catch (_) {}
+        gwPort = port;
       }
       try { localStorage.setItem("acad-custom-instructions", p); } catch (_) {}
       div.remove();
@@ -299,10 +311,9 @@ function toggleCategory(name) {
 
 // ===== Gateway Connection =====
 
-/** Returns the WebSocket URL for the OpenClaw Gateway proxy. */
+/** Returns the WebSocket URL for the OpenClaw Gateway. */
 function getGatewayUrl() {
-  const proto = location.protocol === "https:" ? "wss" : "ws";
-  return `${proto}://${location.host}/ai-gateway`;
+  return `ws://localhost:${gwPort}?token=${encodeURIComponent(authToken)}`;
 }
 
 /**
@@ -372,7 +383,7 @@ function sendHandshake() {
     role: "operator",
     scopes: ["operator.admin"],
     caps: ["tool-events"],
-    auth: { token: authToken || GATEWAY_TOKEN },
+    auth: { token: authToken },
   };
 
   callRpc("connect", params)
