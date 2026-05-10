@@ -46,7 +46,10 @@ module.exports = (env, argv) => {
       }),
     ],
     devServer: {
-      static: { directory: path.join(__dirname, "dist") },
+      static: [
+        { directory: path.join(__dirname, "dist") },
+        { directory: path.join(__dirname, "assets"), publicPath: "/assets" },
+      ],
       headers: { "Access-Control-Allow-Origin": "*" },
       server: { type: "https", options: isDev ? getHttpsOptions() : undefined },
       proxy: [

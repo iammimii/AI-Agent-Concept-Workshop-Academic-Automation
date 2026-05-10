@@ -11,6 +11,11 @@
 
     <!-- Status Bar -->
     <div id="status-bar" class="status-bar connecting">
+      <svg width="20" height="20" viewBox="0 0 20 20" fill="none" style="flex-shrink:0">
+        <circle cx="10" cy="10" r="10" fill="#0d9488"/>
+        <rect x="3.5" y="6" width="13" height="9" rx="1" fill="none" stroke="white" stroke-width="1.2"/>
+        <polyline points="3.5,6 10,11.5 16.5,6" fill="none" stroke="white" stroke-width="1.2"/>
+      </svg>
       <span class="status-dot"></span>
       <span id="status-text">Connecting...</span>
       <span id="version-label" style="margin-left:auto;font-size:10px;opacity:0.45">v1.0.0</span>
@@ -80,6 +85,14 @@
           </svg>
           Use Draft
         </button>
+      </div>
+      <!-- Label Row -->
+      <div class="label-row" id="label-row" style="display:none">
+        <span class="label-title">Label:</span>
+        <button class="btn btn-label" data-category="Urgent">🔴 Urgent</button>
+        <button class="btn btn-label" data-category="Extension">🟡 Extension</button>
+        <button class="btn btn-label" data-category="Info">🔵 Info</button>
+        <button class="btn btn-label" data-category="Done">🟢 Done</button>
       </div>
     </div>
 

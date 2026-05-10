@@ -173,6 +173,7 @@ function readEmail() {
 function showNoEmail() {
   $("email-placeholder").style.display = "flex";
   $("email-info").style.display = "none";
+  $("label-row").style.display = "none";
   currentEmail = null;
 }
 
@@ -182,6 +183,66 @@ function renderEmailHeader(subject, from, date) {
   $("email-subject").textContent = subject;
   $("email-from").textContent = from;
   $("email-date").textContent = date;
+  loadCategories();
+}
+
+// ===== Categories =====
+function loadCategories() {
+  const item = Office.context.mailbox.item;
+  if (!item || !item.categories) {
+    $("label-row").style.display = "none";
+    return;
+  }
+  $("label-row").style.display = "flex";
+  item.categories.getAsync(result => {
+    if (result.status !== Office.AsyncResultStatus.Succeeded) return;
+    const active = (result.value || []).map(c => (c.displayName || c).toLowerCase());
+    document.querySelectorAll(".btn-label").forEach(btn => {
+      const cat = btn.dataset.category.toLowerCase();
+      btn.classList.toggle("active", active.includes(cat));
+    });
+  });
+}
+
+function ensureMasterCategory(name, callback) {
+  const colorMap = {
+    "Urgent":    Office.MailboxEnums.CategoryColor.Preset0,
+    "Extension": Office.MailboxEnums.CategoryColor.Preset3,
+    "Info":      Office.MailboxEnums.CategoryColor.Preset7,
+    "Done":      Office.MailboxEnums.CategoryColor.Preset5,
+  };
+  Office.context.mailbox.masterCategories.getAsync(result => {
+    if (result.status !== Office.AsyncResultStatus.Succeeded) { callback(); return; }
+    const exists = (result.value || []).some(c => c.displayName.toLowerCase() === name.toLowerCase());
+    if (exists) { callback(); return; }
+    const color = colorMap[name] || Office.MailboxEnums.CategoryColor.Preset0;
+    Office.context.mailbox.masterCategories.addAsync([{ displayName: name, color }], () => callback());
+  });
+}
+
+function toggleCategory(name) {
+  const item = Office.context.mailbox.item;
+  if (!item) { addMessage("err", "No email selected."); return; }
+  if (!item.categories) { addMessage("err", "Categories not supported in this Outlook version."); return; }
+
+  item.categories.getAsync(result => {
+    if (result.status !== Office.AsyncResultStatus.Succeeded) {
+      addMessage("err", "Could not read categories: " + (result.error?.message || "unknown error"));
+      return;
+    }
+    const active = (result.value || []).map(c => (c.displayName || c).toLowerCase());
+    if (active.includes(name.toLowerCase())) {
+      item.categories.removeAsync([name], () => loadCategories());
+    } else {
+      ensureMasterCategory(name, () => {
+        item.categories.addAsync([name], r => {
+          if (r.status !== Office.AsyncResultStatus.Succeeded)
+            addMessage("err", "Add failed: " + (r.error?.message || "unknown error"));
+          loadCategories();
+        });
+      });
+    }
+  });
 }
 
 // ===== Gateway Connection =====
@@ -598,6 +659,10 @@ function bindEvents() {
   $("send-btn").addEventListener("click", handleSend);
   $("draft-btn").addEventListener("click", draftReply);
   $("use-draft-btn").addEventListener("click", useDraft);
+
+  document.querySelectorAll(".btn-label").forEach(btn => {
+    btn.addEventListener("click", () => toggleCategory(btn.dataset.category));
+  });
 
   $("settings-btn").addEventListener("click", () => {
     const existing = document.getElementById("settings-panel");

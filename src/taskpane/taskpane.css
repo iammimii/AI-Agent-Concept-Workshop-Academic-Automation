@@ -276,3 +276,22 @@ html, body {
 .btn-draft:hover:not(:disabled) { background: var(--accent-subtle); }
 .btn-use-draft { border-color: var(--success); color: var(--success); }
 .btn-use-draft:hover:not(:disabled) { background: rgba(22,163,74,0.08); }
+
+/* ===== Label Row ===== */
+.label-row {
+  display: flex; align-items: center; gap: 4px;
+  margin-top: 5px; flex-wrap: wrap;
+}
+.label-title {
+  font-size: 11px; color: var(--text-muted); flex-shrink: 0;
+}
+.btn-label {
+  padding: 3px 8px; font-size: 11px; font-weight: 500;
+  background: var(--bg-tertiary); color: var(--text-secondary);
+  border: 1px solid var(--border); border-radius: 999px;
+  transition: background 0.15s, border-color 0.15s, opacity 0.15s;
+}
+.btn-label:hover:not(:disabled) { background: var(--bg-hover); border-color: var(--accent); }
+.btn-label.active {
+  background: var(--accent-subtle); border-color: var(--accent); color: var(--accent); font-weight: 600;
+}
