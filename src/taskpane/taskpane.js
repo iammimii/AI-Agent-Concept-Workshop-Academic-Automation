@@ -1,20 +1,17 @@
 import "./taskpane.css";
 
 // ===== Gateway Config =====
-const GW_PORT = 18789;
 const BACKOFF_BASE = 1200;
 const BACKOFF_MAX = 20000;
-
 
 // ===== State =====
 let socket = null;
 let isConnected = false;
 let authToken = null;
-let gwPort = 18789;
 let sessionKey = "agent:main:academic-email";
 let activeEmailId = null;
 let currentEmail = null;
-let contextSentForEmail = null;
+let contextSentForEmail = null; // tracks by email hash, not subject
 let streamBuffer = "";
 let activeRunId = null;
 let waitingForResponse = false;
@@ -85,17 +82,14 @@ function applyTheme() {
 // ===== Token =====
 
 /**
- * Loads the gateway auth token and port from localStorage. If no token is saved,
- * shows the settings panel immediately so the user can enter their credentials
- * before connecting.
+ * Loads the gateway auth token from localStorage. Shows the settings panel
+ * immediately on first launch so the user can enter their token.
  */
 function loadToken() {
   try {
     authToken = localStorage.getItem("acad-gateway-token") || "";
-    gwPort = parseInt(localStorage.getItem("acad-gateway-port"), 10) || 18789;
   } catch (_) {
     authToken = "";
-    gwPort = 18789;
   }
   if (!authToken) {
     showTokenPrompt();
@@ -121,12 +115,6 @@ function showTokenPrompt() {
       style="width:100%;padding:5px 8px;border:1px solid var(--border);border-radius:4px;
              background:var(--bg-input);color:var(--text-primary);font-size:12px;
              margin-bottom:8px;font-family:monospace"/>
-    <label style="font-size:11px;color:var(--text-secondary)">Gateway Port</label>
-    <input type="number" id="port-field" placeholder="18789"
-      value="${gwPort || 18789}"
-      style="width:100%;padding:5px 8px;border:1px solid var(--border);border-radius:4px;
-             background:var(--bg-input);color:var(--text-primary);font-size:12px;
-             margin-bottom:8px;font-family:monospace"/>
     <label style="font-size:11px;color:var(--text-secondary)">Custom Instructions (optional)</label>
     <textarea id="prompt-field" rows="3"
       placeholder="e.g. Always reply formally. Never use bullet points."
@@ -138,7 +126,7 @@ function showTokenPrompt() {
              border-radius:4px;cursor:pointer;font-size:12px">
       Save &amp; Connect
     </button>
-    <br><small style="color:var(--text-muted)">Token: ~/.openclaw/openclaw.json → gateway.auth.token · Port: default 18789</small>
+    <br><small style="color:var(--text-muted)">Token location: ~/.openclaw/openclaw.json → gateway.auth.token</small>
   </div>`;
   $("chat-messages").appendChild(div);
 
@@ -147,15 +135,10 @@ function showTokenPrompt() {
     if (!btn) return;
     btn.addEventListener("click", () => {
       const t = document.getElementById("token-field").value.trim();
-      const port = parseInt(document.getElementById("port-field").value, 10);
       const p = document.getElementById("prompt-field").value.trim();
       if (t) {
         try { localStorage.setItem("acad-gateway-token", t); } catch (_) {}
         authToken = t;
-      }
-      if (port) {
-        try { localStorage.setItem("acad-gateway-port", String(port)); } catch (_) {}
-        gwPort = port;
       }
       try { localStorage.setItem("acad-custom-instructions", p); } catch (_) {}
       div.remove();
@@ -296,7 +279,11 @@ function toggleCategory(name) {
     }
     const active = (result.value || []).map(c => (c.displayName || c).toLowerCase());
     if (active.includes(name.toLowerCase())) {
-      item.categories.removeAsync([name], () => loadCategories());
+      item.categories.removeAsync([name], r => {
+        if (r.status !== Office.AsyncResultStatus.Succeeded)
+          addMessage("err", "Remove failed: " + (r.error?.message || "unknown error"));
+        loadCategories();
+      });
     } else {
       ensureMasterCategory(name, () => {
         item.categories.addAsync([name], r => {
@@ -311,15 +298,19 @@ function toggleCategory(name) {
 
 // ===== Gateway Connection =====
 
-/** Returns the WebSocket URL for the OpenClaw Gateway. */
+/**
+ * Returns the WebSocket URL via the webpack-dev-server proxy.
+ * The proxy upgrades the connection from WSS (HTTPS page) to WS (OpenClaw),
+ * which avoids mixed-content errors that would occur connecting to WS directly.
+ */
 function getGatewayUrl() {
-  return `ws://localhost:${gwPort}?token=${encodeURIComponent(authToken)}`;
+  const proto = location.protocol === "https:" ? "wss" : "ws";
+  return `${proto}://${location.host}/ai-gateway`;
 }
 
 /**
- * Opens a WebSocket connection to the OpenClaw Gateway (proxied by
- * webpack-dev-server from /ai-gateway to port 18789). Implements
- * exponential backoff on disconnect.
+ * Opens a WebSocket connection to the OpenClaw Gateway via the webpack proxy.
+ * Implements exponential backoff on disconnect.
  */
 function connectGateway() {
   if (socket && (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING)) return;
@@ -336,6 +327,7 @@ function connectGateway() {
 
   socket.onopen = () => {
     setStatus("connecting");
+    // Give the server 2s to send connect.challenge; proceed anyway if it doesn't arrive.
     setTimeout(() => { if (!isConnected) sendHandshake(); }, 2000);
   };
 
@@ -563,7 +555,7 @@ function handleEvent(evt) {
         const text = payload.content || payload.text || payload.message;
         if (typeof text === "string" && text.trim()) {
           flushStream();
-          addMessage("ai", text.trim());
+          addMessage("ai", processAIText(text.trim()));
           if (!activeRunId) hideTyping();
         }
       }
@@ -623,7 +615,8 @@ function fetchLatestReply() {
           historyFetching = false;
           lastShownMsgId = msgId;
           addMessage("ai", processAIText(text.trim()));
-        } else if (msgId === lastShownMsgId) {
+        } else {
+          // same ID or empty body — reply not ready yet, retry
           historyFetching = false;
           setTimeout(fetchLatestReply, 2000);
         }
@@ -672,9 +665,9 @@ function extractText(msg) {
 
 /**
  * Sends a user message to OpenClaw via the chat.send RPC.
- * Prepends the full email context on the first message of each conversation
- * so the AI knows what it is analysing. An idempotency key prevents duplicate
- * messages if the request is retried.
+ * Prepends the full email context on the first message of each email session
+ * (tracked by email hash, not subject, to avoid collisions between emails
+ * with the same subject line). An idempotency key prevents duplicate messages.
  *
  * @param {string} text - The message text to send
  */
@@ -687,7 +680,7 @@ function sendMessage(text) {
 
   let fullText = text;
 
-  if (currentEmail && contextSentForEmail !== currentEmail.subject) {
+  if (currentEmail && contextSentForEmail !== activeEmailId) {
     const body = (currentEmail.body || "").slice(0, 3000);
     const custom = getSavedSystemPrompt();
     let prefix = "";
@@ -695,7 +688,7 @@ function sendMessage(text) {
     prefix += `[Instructions: You are an email assistant. Answer the user's question directly. Do not repeat or quote the email body in your response. Do not create memory files, do not log email content, do not ask for confirmation, do not show next steps. When asked to assign or suggest a label/priority for this email, read the email and decide: Urgent = needs immediate action or is time-sensitive, Medium = needs attention but not critical, Minor = low priority or informational. Include exactly one of [LABEL:Urgent], [LABEL:Medium], or [LABEL:Minor] at the very end of your response.]\n\n`;
     prefix += `[Current email context]\nSubject: ${currentEmail.subject}\nFrom: ${currentEmail.from}\nTo: ${currentEmail.to}\nDate: ${currentEmail.date}\n\nBody:\n${body}\n\n---\n\n`;
     fullText = prefix + `User question: ${text}`;
-    contextSentForEmail = currentEmail.subject;
+    contextSentForEmail = activeEmailId;
   }
 
   callRpc("chat.send", {
@@ -755,8 +748,22 @@ function useDraft() {
 // ===== AI Label Action Parser =====
 
 /**
- * Post-processes AI response text before displaying it:
- * strips any echoed email context block, removes trailing separators,
+ * Strips label tags and context echoes from text for display during streaming.
+ * Does not apply any Outlook category — use processAIText for finalised messages.
+ *
+ * @param {string} text
+ * @returns {string}
+ */
+function stripAITags(text) {
+  let cleaned = text.replace(/\[Current email context\][\s\S]*?---\s*/g, "").trim();
+  cleaned = cleaned.replace(/\n---+\s*$/g, "").trim();
+  cleaned = cleaned.replace(/\s*\[LABEL:[^\]]+\]/gi, "").trim();
+  return cleaned;
+}
+
+/**
+ * Post-processes finalised AI response text:
+ * strips any echoed email context, removes trailing separators,
  * and detects a [LABEL:X] tag to automatically apply the Outlook category.
  *
  * @param {string} text - Raw AI response text
@@ -804,9 +811,9 @@ function addMessage(role, text) {
 }
 
 /**
- * Updates the live streaming bubble with the latest accumulated text as chunks
- * arrive. Creates the bubble on first call, replaces its content on subsequent
- * calls so the response appears to type out in real time.
+ * Updates the live streaming bubble with cleaned text as chunks arrive.
+ * Label tags are stripped visually during streaming; they are only applied
+ * to Outlook once the stream is finalised via flushStream → processAIText.
  *
  * @param {string} text - Full accumulated stream text so far
  */
@@ -822,7 +829,7 @@ function renderStreamingBubble(text) {
     el.appendChild(body);
     container.appendChild(el);
   }
-  el.querySelector(".msg-body").textContent = text;
+  el.querySelector(".msg-body").textContent = stripAITags(text);
   scrollDown();
 }
 
