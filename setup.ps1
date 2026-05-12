@@ -44,6 +44,12 @@ ollama pull qwen2.5:3b
 if ($LASTEXITCODE -ne 0) { Write-Fail "Failed to pull model. Make sure Ollama is running." }
 Write-OK "Model ready"
 
+# ── 5b. Set OLLAMA_API_KEY (OpenClaw requires this env var even for local Ollama) ─
+Write-Step "Configuring Ollama provider key..."
+[System.Environment]::SetEnvironmentVariable("OLLAMA_API_KEY", "ollama", "User")
+$env:OLLAMA_API_KEY = "ollama"
+Write-OK "OLLAMA_API_KEY set"
+
 # ── 6. Create OpenClaw config ─────────────────────────────────────────────────
 Write-Step "Creating OpenClaw configuration..."
 $openclawDir = "$env:USERPROFILE\.openclaw"
