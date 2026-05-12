@@ -51,8 +51,8 @@ if (!(Test-Path $openclawDir)) { New-Item -ItemType Directory -Path $openclawDir
 
 $configPath = "$openclawDir\openclaw.json"
 
-# Only write the config if it doesn't already exist, to avoid wiping a token
 if (!(Test-Path $configPath)) {
+    # Fresh install — write the full default config
     $config = @'
 {
   "agents": {
@@ -80,7 +80,43 @@ if (!(Test-Path $configPath)) {
     Set-Content -Path $configPath -Value $config -Encoding utf8
     Write-OK "openclaw.json created"
 } else {
-    Write-OK "openclaw.json already exists — skipped"
+    # Existing config — patch in any missing fields without touching the auth token
+    $cfg = Get-Content $configPath -Raw | ConvertFrom-Json
+    $changed = $false
+
+    if ($null -eq $cfg.gateway) {
+        $cfg | Add-Member -NotePropertyName "gateway" -NotePropertyValue ([PSCustomObject]@{})
+        $changed = $true
+    }
+    if ($null -eq $cfg.gateway.controlUi) {
+        $cfg.gateway | Add-Member -NotePropertyName "controlUi" -NotePropertyValue ([PSCustomObject]@{
+            allowedOrigins              = @("https://localhost:3000")
+            dangerouslyDisableDeviceAuth = $true
+        })
+        $changed = $true
+    } else {
+        if ($null -eq $cfg.gateway.controlUi.allowedOrigins) {
+            $cfg.gateway.controlUi | Add-Member -NotePropertyName "allowedOrigins" -NotePropertyValue @("https://localhost:3000")
+            $changed = $true
+        }
+        if ($null -eq $cfg.gateway.controlUi.dangerouslyDisableDeviceAuth) {
+            $cfg.gateway.controlUi | Add-Member -NotePropertyName "dangerouslyDisableDeviceAuth" -NotePropertyValue $true
+            $changed = $true
+        }
+    }
+    if ($null -eq $cfg.plugins) {
+        $cfg | Add-Member -NotePropertyName "plugins" -NotePropertyValue ([PSCustomObject]@{
+            entries = [PSCustomObject]@{ ollama = [PSCustomObject]@{ enabled = $true } }
+        })
+        $changed = $true
+    }
+
+    if ($changed) {
+        $cfg | ConvertTo-Json -Depth 10 | Set-Content $configPath -Encoding utf8
+        Write-OK "openclaw.json updated with required settings"
+    } else {
+        Write-OK "openclaw.json already configured correctly — skipped"
+    }
 }
 
 # ── 7. Pre-create OpenClaw workspace to prevent bootstrap workflow ─────────────
