@@ -1,5 +1,3 @@
-const sampleEmails = require('../fixtures/sampleEmails');
-
 describe('Utility Functions', () => {
   describe('hashString', () => {
     const hashString = (str) => {

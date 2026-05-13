@@ -26,14 +26,14 @@
 
 **Objective**: Verify AI provides relevant answers to email-related questions
 
-**Test Data**: Use the 10 sample academic emails from `tests/fixtures/sampleEmails.json`
+**Test Data**: Use the 12 sample academic emails from `tests/fixtures/sampleEmails.json`
 
 **Steps**:
 1. Open Outlook and select Email #001 (Assignment deadline question)
 2. Type: "What is this email asking about?"
 3. Wait for AI response and evaluate relevance
 4. Record result in table below
-5. Repeat for all 10 emails
+5. Repeat for all 12 emails
 
 | Email ID | Question | Expected Topic | Actual Response | Relevant (Y/N) | Rating (1-5) |
 |----------|----------|----------------|-----------------|----------------|--------------|
@@ -47,6 +47,8 @@
 | 008 | What is this email about? | Meeting request | | | |
 | 009 | What is this email about? | Library resources announcement | | | |
 | 010 | What is this email about? | Group project complaint | | | |
+| 011 | What is this email asking about? | Empty/edge case | | | |
+| 012 | What is this email about? | Long email body test | | | |
 
 ---
 
@@ -73,6 +75,8 @@
 | 008 | Meeting request | | | | |
 | 009 | Library announcement | | | | |
 | 010 | Group project issue | | | | |
+| 011 | Empty/edge case | | | | |
+| 012 | Long email body | | | | |
 
 ---
 
@@ -147,7 +151,7 @@
 
 ## TC-15: Performance and Code Coverage
 
-**Unit Tests**: Run `npm test` - should show 60/60 passing
+**Unit Tests**: Run `npm test` - should show ~104 passing
 
 **Coverage Target**: Logic validation via unit tests (≥80% of testable logic covered)
 

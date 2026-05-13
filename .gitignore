@@ -13,3 +13,6 @@ Thumbs.db
 
 # Test coverage reports
 coverage/
+
+# Kilo internal config
+.kilo/

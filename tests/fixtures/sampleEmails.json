@@ -7,7 +7,8 @@
     "date": "2026-04-15T09:30:00Z",
     "body": "Hi Dr. Jadidi,\n\nI am writing to ask about the deadline for Assignment 2. I noticed it was mentioned in the lecture but I wanted to confirm the exact date and time.\n\nAlso, could you clarify if the submission is due at 11:59 PM or midnight?\n\nThank you,\nAlex Chen",
     "category": "inquiry",
-    "urgency": "medium"
+    "urgency": "medium",
+    "reason": "Standard deadline clarification — no time pressure, standard academic inquiry"
   },
   {
     "id": "email-002",
@@ -16,8 +17,9 @@
     "recipients": [{ "name": "Dr. Zahra Jadidi", "address": "z.jadidi@university.edu" }],
     "date": "2026-04-15T14:22:00Z",
     "body": "Dear Dr. Jadidi,\n\nI am unable to access my exam marks on the student portal. I have tried multiple times but keep getting an error message.\n\nThis is quite urgent as I need my marks for a scholarship application deadline tomorrow.\n\nCould you please help me resolve this issue as soon as possible?\n\nKind regards,\nSarah Johnson",
-    "category": "complaint",
-    "urgency": "high"
+    "category": "urgent",
+    "urgency": "urgent",
+    "reason": "Scholarship deadline explicitly stated as tomorrow — immediate action required"
   },
   {
     "id": "email-003",
@@ -27,7 +29,8 @@
     "date": "2026-04-14T10:00:00Z",
     "body": "Dear Staff,\n\nThis is a reminder that the ICT Department workshop scheduled for next Thursday has been confirmed.\n\nRoom: Building G, Room 101\nTime: 2:00 PM - 4:00 PM\n\nPlease confirm your attendance by replying to this email.\n\nBest regards,\nICT Administration",
     "category": "administrative",
-    "urgency": "low"
+    "urgency": "medium",
+    "reason": "Workshop confirmation needed but next Thursday gives several days notice"
   },
   {
     "id": "email-004",
@@ -37,7 +40,8 @@
     "date": "2026-04-16T11:15:00Z",
     "body": "Dear Dr. Jadidi,\n\nI am writing to request an extension on Assignment 3. I have been experiencing some health issues that have affected my ability to work on the assignment.\n\nI have attached a medical certificate as supporting documentation.\n\nWould it be possible to get an extension until next Friday?\n\nThank you for your understanding.\n\nMichael Park",
     "category": "request",
-    "urgency": "medium"
+    "urgency": "medium",
+    "reason": "Extension request with supporting medical documentation — needs review and approval but not an immediate crisis"
   },
   {
     "id": "email-005",
@@ -47,7 +51,8 @@
     "date": "2026-04-13T16:45:00Z",
     "body": "Hi Dr. Jadidi,\n\nI wanted to provide some feedback on last week's lecture on network security. I found the section on encryption protocols particularly helpful.\n\nHowever, I think it would be beneficial to have more practical examples in the next lecture.\n\nOverall, great job with the teaching!\n\nBest,\nJennifer",
     "category": "feedback",
-    "urgency": "low"
+    "urgency": "minor",
+    "reason": "Positive student feedback — appreciative, no action required beyond acknowledgment"
   },
   {
     "id": "email-006",
@@ -57,7 +62,8 @@
     "date": "2026-04-17T08:20:00Z",
     "body": "Hello,\n\nCan you please tell me what format the upcoming exam will be in? Will it be multiple choice, short answer, or essay style?\n\nAlso, will we be allowed to bring any notes or calculators?\n\nThanks,\nDavid",
     "category": "inquiry",
-    "urgency": "medium"
+    "urgency": "medium",
+    "reason": "Exam preparation question — important but not time-sensitive, answer benefits exam readiness"
   },
   {
     "id": "email-007",
@@ -67,7 +73,8 @@
     "date": "2026-04-17T15:30:00Z",
     "body": "Hi Dr. Jadidi,\n\nI'm following up on my previous email about accessing the course materials. The issue is that I cannot find the reading list for Week 7.\n\nCould you please check if it has been uploaded?\n\nThank you,\nAmanda",
     "category": "inquiry",
-    "urgency": "low"
+    "urgency": "medium",
+    "reason": "Missing course material — student needs the Week 7 reading list to continue studying"
   },
   {
     "id": "email-008",
@@ -77,7 +84,8 @@
     "date": "2026-04-18T10:00:00Z",
     "body": "Dear Dr. Jadidi,\n\nI would like to schedule a meeting to discuss my thesis progress. Would you be available sometime next week?\n\nI am free on Monday afternoon, Tuesday morning, or Wednesday any time.\n\nPlease let me know what works best for you.\n\nBest regards,\nRobert Zhang",
     "category": "request",
-    "urgency": "medium"
+    "urgency": "minor",
+    "reason": "Thesis meeting scheduling — important for academic progress but no urgent deadline, flexible timing"
   },
   {
     "id": "email-009",
@@ -86,8 +94,9 @@
     "recipients": [{ "name": "Dr. Zahra Jadidi", "address": "z.jadidi@university.edu" }],
     "date": "2026-04-14T09:00:00Z",
     "body": "Dear Faculty,\n\nWe are pleased to announce that the library has acquired new database subscriptions relevant to cybersecurity research.\n\nThese include:\n- IEEE Security & Privacy Archive\n- ACM Digital Library - Security Collection\n- National Vulnerability Database access\n\nYou can access these resources through the library website using your staff login.\n\nBest,\nLibrary Services",
-    "category": "administrative",
-    "urgency": "low"
+    "category": "announcement",
+    "urgency": "minor",
+    "reason": "Informational announcement about new library resources — no action required, read at leisure"
   },
   {
     "id": "email-010",
@@ -96,27 +105,30 @@
     "recipients": [{ "name": "Dr. Zahra Jadidi", "address": "z.jadidi@university.edu" }],
     "date": "2026-04-16T13:45:00Z",
     "body": "Dear Dr. Jadidi,\n\nI am having issues with my group project teammate. They have not been contributing to the project and are not responding to our messages.\n\nWe have a deadline coming up and I am concerned we will not be able to submit on time.\n\nWhat options do I have in this situation?\n\nThank you,\nEmily Brown",
-    "category": "complaint",
-    "urgency": "high"
-  }
+    "category": "urgent",
+    "urgency": "medium",
+    "reason": "Group conflict with approaching deadline — needs intervention and guidance but not an imminent crisis"
+  },
   {
-  "id": "email-011",
-  "subject": "",
-  "sender": { "name": "Unknown Student", "address": "unknown@student.university.edu" },
-  "recipients": [{ "name": "Dr. Zahra Jadidi", "address": "z.jadidi@university.edu" }],
-  "date": "2026-04-19T10:00:00Z",
-  "body": "",
-  "category": "unknown",
-  "urgency": "low"
-  }
+    "id": "email-011",
+    "subject": "",
+    "sender": { "name": "Unknown Student", "address": "unknown@student.university.edu" },
+    "recipients": [{ "name": "Dr. Zahra Jadidi", "address": "z.jadidi@university.edu" }],
+    "date": "2026-04-19T10:00:00Z",
+    "body": "",
+    "category": "unknown",
+    "urgency": "medium",
+    "reason": "Empty/malformed email — cannot assess priority without content, treat as medium until context is established"
+  },
   {
-  "id": "email-012",
-  "subject": "Long email test case",
-  "sender": { "name": "Test User", "address": "test.user@student.university.edu" },
-  "recipients": [{ "name": "Dr. Zahra Jadidi", "address": "z.jadidi@university.edu" }],
-  "date": "2026-04-19T11:00:00Z",
-  "body": "This is a long email body used for testing system limits. ".repeat(100),
-  "category": "inquiry",
-  "urgency": "low"
+    "id": "email-012",
+    "subject": "Long email test case",
+    "sender": { "name": "Test User", "address": "test.user@student.university.edu" },
+    "recipients": [{ "name": "Dr. Zahra Jadidi", "address": "z.jadidi@university.edu" }],
+    "date": "2026-04-19T11:00:00Z",
+    "body": "This is a long email body used for testing system limits. ".repeat(100),
+    "category": "inquiry",
+    "urgency": "minor",
+    "reason": "System test email — artificially long, no real content or urgency"
   }
 ]
