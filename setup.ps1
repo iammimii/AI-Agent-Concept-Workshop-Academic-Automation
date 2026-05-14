@@ -156,6 +156,17 @@ if (Test-Path $bootstrapPath) {
     Remove-Item $bootstrapPath
     Write-OK "Bootstrap workflow disabled"
 }
+# ── 8. Deploy SOUL.md to OpenClaw workspace ────────────────────────────────
+Write-Step "Deploying agent personality (SOUL.md) to OpenClaw workspace..."
+$soulSource = Join-Path $PSScriptRoot ".agents\SOUL.md"
+$soulDest   = "$workspaceDir\SOUL.md"
+if (Test-Path $soulSource) {
+    Copy-Item -Path $soulSource -Destination $soulDest -Force
+    Write-OK "SOUL.md deployed to $soulDest"
+} else {
+    Write-Host "  WARN .agents\SOUL.md not found in repo — skipping" -ForegroundColor Yellow
+}
+
 
 # ── Done ──────────────────────────────────────────────────────────────────────
 Write-Host ""
