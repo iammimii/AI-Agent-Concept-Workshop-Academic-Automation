@@ -166,3 +166,24 @@ OpenClaw Gateway  (local)
         ▼
 Ollama — qwen2.5:3b  (:11434)
 ```
+
+
+---
+
+## Agent configuration (`.agents/` folder)
+
+The agent's behaviour, personality, and capabilities are defined by three files in the `.agents/` folder. These are automatically deployed to the OpenClaw workspace when you run `npm run setup`.
+
+| File | Purpose |
+|---|---|
+| `SOUL.md` | Personality, tone, and reply style — how the agent sounds |
+| `AGENTS.md` | Operating rules — what it can do, what it must not do, how it handles each situation |
+| `TOOLS.md` | Full list of available capabilities and their limitations |
+
+If you want to change how the agent behaves or talks, edit the relevant file in `.agents/` and re-run `npm run setup` to redeploy it. The files are copied to:
+
+```
+C:\Users\<YourName>\.openclaw\workspace\
+```
+
+> These files travel with the repo. Anyone who clones and runs setup gets the same agent configuration automatically.
