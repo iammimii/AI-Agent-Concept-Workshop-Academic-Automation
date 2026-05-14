@@ -166,6 +166,22 @@ if (Test-Path $soulSource) {
 } else {
     Write-Host "  WARN .agents\SOUL.md not found in repo — skipping" -ForegroundColor Yellow
 }
+$agentsSource = Join-Path $PSScriptRoot ".agents\AGENTS.md"
+$agentsDest   = "$workspaceDir\AGENTS.md"
+if (Test-Path $agentsSource) {
+    Copy-Item -Path $agentsSource -Destination $agentsDest -Force
+    Write-OK "AGENTS.md deployed to $agentsDest"
+} else {
+    Write-Host "  WARN .agents\AGENTS.md not found in repo — skipping" -ForegroundColor Yellow
+}
+$toolsSource = Join-Path $PSScriptRoot ".agents\TOOLS.md"
+$toolsDest   = "$workspaceDir\TOOLS.md"
+if (Test-Path $toolsSource) {
+    Copy-Item -Path $toolsSource -Destination $toolsDest -Force
+    Write-OK "TOOLS.md deployed to $toolsDest"
+} else {
+    Write-Host "  WARN .agents\TOOLS.md not found in repo — skipping" -ForegroundColor Yellow
+}
 
 
 # ── Done ──────────────────────────────────────────────────────────────────────
