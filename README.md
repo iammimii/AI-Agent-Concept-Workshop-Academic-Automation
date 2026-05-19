@@ -150,6 +150,16 @@ You should now see **Academic Assistant** in your Outlook ribbon.
 | AI session management | OpenClaw Gateway (WebSocket) |
 | Build / dev server | Webpack 5 + webpack-dev-server |
 
+## Security note on `npm audit`
+
+A clean `npm install` reports **8 vulnerabilities (2 moderate, 6 high)** at the time of writing. All of them are in **dev-only** transitive dependencies — `webpack-dev-server`, `copy-webpack-plugin/serialize-javascript`, `fast-uri`, and `ws` — none of which ship in the production add-in bundle that loads into Outlook. They only run on a developer's local machine over HTTPS on `localhost:3000`.
+
+We deliberately do **not** run `npm audit fix` on this project. The autofix path resolves to a newer `office-addin-dev-certs` chain that pulls in `@azure/monitor-opentelemetry` and ~50 OpenTelemetry packages, several of which depend on a vulnerable `protobufjs@8.0.x`. The result is a worse posture (17 vulns instead of 8) plus a heavier `node_modules`. The remaining `serialize-javascript` vuln requires `npm audit fix --force` which upgrades `copy-webpack-plugin` v13 → v14 and risks breaking the existing webpack config.
+
+If a future audit run is required for compliance, the path is: upgrade `copy-webpack-plugin` to v14 and verify the build still works, then pin `office-addin-dev-certs` at a version that does not pull Azure telemetry. This is tracked as accepted residual risk for Sprint 2.
+
+---
+
 ## Architecture
 
 ```
