@@ -47,17 +47,19 @@ All manual tests are documented in `manual/TEST_PROCEDURES.md`. These require:
 
 ## Test Data
 
-10 synthetic academic emails in `fixtures/sampleEmails.json` covering:
-- Email-001: Assignment deadline inquiry (medium urgency, inquiry)
-- Email-002: Exam marks access issue (high urgency, complaint)
-- Email-003: Workshop attendance (low urgency, administrative)
-- Email-004: Extension request (medium urgency, request)
-- Email-005: Lecture feedback (low urgency, feedback)
-- Email-006: Exam format question (medium urgency, inquiry)
-- Email-007: Course materials follow-up (low urgency, inquiry)
-- Email-008: Meeting request (medium urgency, request)
-- Email-009: Library resources announcement (low urgency, administrative)
-- Email-010: Group project complaint (high urgency, complaint)
+12 synthetic academic emails in `fixtures/sampleEmails.json` covering:
+- Email-001: Assignment deadline inquiry (Medium, inquiry)
+- Email-002: Exam marks access issue (Urgent, complaint)
+- Email-003: Workshop attendance (Minor, administrative)
+- Email-004: Extension request (Medium, request)
+- Email-005: Lecture feedback (Minor, feedback)
+- Email-006: Exam format question (Medium, inquiry)
+- Email-007: Course materials follow-up (Minor, inquiry)
+- Email-008: Meeting request (Medium, request)
+- Email-009: Library resources announcement (Minor, administrative)
+- Email-010: Group project teammate issue (Urgent)
+- Email-011: Empty subject + body edge case (Minor)
+- Email-012: Very long body stress test (Minor)
 
 ## Manual Test Cases
 
@@ -83,7 +85,6 @@ The manual test procedures are documented in `manual/TEST_PROCEDURES.md` and cov
 - TC-15: Performance and code coverage (manual timing required)
 - TC-16: Pinned sidebar / email switching
 - TC-17: Token persistence
-- TC-18: Theme compatibility
 
 ## Notes
 

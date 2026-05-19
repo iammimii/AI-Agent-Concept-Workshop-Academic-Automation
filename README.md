@@ -115,7 +115,7 @@ You should now see **Academic Assistant** in your Outlook ribbon.
 | Use the drafted reply | Click **Use Draft** — it opens Outlook's compose window |
 | Auto-assign a label | Click **Auto Label** — AI decides Urgent/Medium/Minor |
 | Manually label | Click **Urgent**, **Medium**, or **Minor** in the label row |
-| Keep sidebar open | Click the 📌 pin icon in the top right of the sidebar |
+| Keep sidebar open across emails | Click Outlook's built-in pin icon (📌) in the top right of the task pane — this is Outlook's pinning feature, not the add-in's |
 
 ---
 

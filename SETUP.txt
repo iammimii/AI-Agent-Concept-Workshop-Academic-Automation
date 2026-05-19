@@ -1,6 +1,20 @@
-Setup Guide for Academic Email Assistant
-=========================================
-----------------------
+Setup Guide for Academic Email Assistant — ALTERNATIVE (WSL) PATH
+==================================================================
+
+NOTE: Most users should follow README.md. README.md uses the one-click
+PowerShell setup (`npm run setup`) which runs everything natively on Windows
+with the OpenClaw CLI installed via npm.
+
+This document describes a DIFFERENT, more manual setup that runs the
+OpenClaw Gateway inside WSL2 (Ubuntu) and reaches Ollama on the Windows host
+across the WSL network bridge. It is retained for advanced users and for
+reference when troubleshooting clock drift, GPU/CPU placement, or context
+window sizing issues.
+
+The "Common issues" section at the bottom is useful regardless of which
+setup path you used.
+
+------------------------------------------------------------------
 
 There are four pieces that need to be running:
 
@@ -110,21 +124,20 @@ The first time you open the sidebar, it'll ask for the gateway password (the one
 Common issues
 -------------
 
-Gunauthorized: gateway password missing" even though you entered the password 
- 
-  This is the issue that took the longest to track down. The sidebar shows the password saved, the gateway logs say it received an "auth" field, but the connection still fails with "password missing". The gateway has two separate functions for handling auth on a connect frame. One checks "auth.password" to decide if you're authenticated. A different function checks "auth.token" when verifying the device signature. They don't fall through to each other. If you only set "auth.password", the auth check passes but signature verification gets null and rejects. If you only set "auth.token", the signature passes but the auth check rejects.
- 
-  Fix: the add-in needs to send the password under BOTH fields in the connect frame. Open the add-in source:
- 
-      nano ~/dev/openclaw-outlook-addin/src/taskpane/taskpane.js
- 
-  Press Ctrl+W, search for "auth: gatewayToken", hit Enter. The line probably looks like:
- 
-      auth: gatewayToken ? { token: gatewayToken } : {},
- 
-  Change it to send both fields:
- 
-      auth: gatewayToken ? { password: gatewayToken, token: gatewayToken } : {},
+"Unauthorized: gateway password missing" even though you entered the password
+
+  This used to be a real problem: the gateway has two separate auth checks
+  on the connect frame. One checks `auth.password`, the other checks
+  `auth.token` for device signature verification. They don't fall through.
+
+  As of this revision, the add-in already sends the token under both fields:
+
+      auth: authToken ? { token: authToken, password: authToken } : {}
+
+  See `src/taskpane/taskpane.js` in `sendHandshake()`. If you still see this
+  error, check that `authToken` is being read correctly from localStorage
+  (open the task pane DevTools, type `localStorage.getItem('acad-gateway-token')`)
+  and that the value matches `gateway.auth.token` in `~/.openclaw/openclaw.json`.
  
 "Disconnected" status that won't clear (other causes)
 

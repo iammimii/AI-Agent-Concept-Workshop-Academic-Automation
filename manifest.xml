@@ -14,7 +14,7 @@
   <Description DefaultValue="AI-powered assistant for analysing university emails and drafting professional replies."/>
   <IconUrl DefaultValue="https://i.imgur.com/11jNkkt.png"/>
   <HighResolutionIconUrl DefaultValue="https://i.imgur.com/11jNkkt.png"/>
-  <SupportUrl DefaultValue="https://localhost:3000"/>
+  <SupportUrl DefaultValue="https://github.com/iammimii/AI-Agent-Concept-Workshop-Academic-Automation"/>
 
   <AppDomains>
     <AppDomain>https://localhost:3000</AppDomain>

@@ -23,6 +23,8 @@ This file documents every capability this agent has access to. Do not claim or a
 
 - **What it does:** Generates a draft reply to the current email, written in first person as the user.
 - **How it's triggered:** User clicks the "Draft Reply" button, or types a request to draft a reply.
+- **Wire prompt the agent receives:**
+  `Please draft a professional reply to this email. Respond in the same language as the original email.`
 - **Output:** Text reply shown in the chat window. User can click "Use Draft" to push it into Outlook's reply compose form.
 - **Limitations:**
   - Does not send the email. Only populates the reply form.
@@ -32,6 +34,9 @@ This file documents every capability this agent has access to. Do not claim or a
 
 - **What it does:** Reads the email and assigns one of three priority labels: Urgent, Medium, or Minor.
 - **How it's triggered:** User clicks the "Auto Label" button.
+- **Wire prompt the agent receives:**
+  `Read this email and assign a priority label (Urgent, Medium, or Minor) based on its urgency. Reply with a brief reason for your choice.`
+- **How the label is applied:** The agent must end its response with exactly one of `[LABEL:Urgent]`, `[LABEL:Medium]`, or `[LABEL:Minor]`. The task pane parses this tag, applies the matching Outlook category, and strips the tag from the visible reply. The tag is only applied to live replies — historical messages from `chat.history` will not retroactively change the label.
 - **Output:** Suggested label shown in chat with a one-sentence reason. Label is also applied to the email as an Outlook category.
 - **Labels and colours:**
   - Urgent — Red

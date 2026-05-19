@@ -56,20 +56,31 @@ if ($existingKey) {
 }
 
 # ── 6. Create OpenClaw config ─────────────────────────────────────────────────
+# The expected model is whatever was just pulled in step 5. If OpenClaw was
+# previously onboarded with a different model (e.g. llama3.1, gemma3, etc.)
+# and that model is not installed locally, the gateway will 404 on every chat
+# request. So we enforce the model here on both fresh installs and re-runs.
 Write-Step "Creating OpenClaw configuration..."
 $openclawDir = "$env:USERPROFILE\.openclaw"
 if (!(Test-Path $openclawDir)) { New-Item -ItemType Directory -Path $openclawDir | Out-Null }
 
-$configPath = "$openclawDir\openclaw.json"
+$configPath  = "$openclawDir\openclaw.json"
+$expectedModel = "ollama/qwen2.5:3b"
 
 if (!(Test-Path $configPath)) {
-    # Fresh install — write the full default config
-    $config = @'
+    # Fresh install — write the full default config. We use the agents.list
+    # schema because that is what `openclaw onboard` writes and what the
+    # gateway actually reads at runtime; agents.defaults.model is ignored
+    # once an agent with id "main" exists.
+    $config = @"
 {
   "agents": {
     "defaults": {
-      "model": "ollama/qwen2.5:3b"
-    }
+      "workspace": "$($openclawDir.Replace('\','\\'))\\workspace"
+    },
+    "list": [
+      { "id": "main", "model": "$expectedModel" }
+    ]
   },
   "gateway": {
     "mode": "local",
@@ -87,11 +98,12 @@ if (!(Test-Path $configPath)) {
     }
   }
 }
-'@
+"@
     Set-Content -Path $configPath -Value $config -Encoding utf8
-    Write-OK "openclaw.json created"
+    Write-OK "openclaw.json created with model $expectedModel"
 } else {
-    # Existing config — patch in any missing fields without touching the auth token
+    # Existing config — patch in any missing fields and enforce the model
+    # without touching the auth token, secrets, or other user settings.
     $cfg = Get-Content $configPath -Raw | ConvertFrom-Json
     $changed = $false
 
@@ -122,8 +134,87 @@ if (!(Test-Path $configPath)) {
         $changed = $true
     }
 
+    # Enforce the agent model. OpenClaw stores it under agents.list[].model
+    # post-onboarding; we update every entry to point at the model we just
+    # pulled. If agents.list is missing entirely (rare), create it.
+    if ($null -eq $cfg.agents) {
+        $cfg | Add-Member -NotePropertyName "agents" -NotePropertyValue ([PSCustomObject]@{})
+        $changed = $true
+    }
+    if ($null -eq $cfg.agents.list -or $cfg.agents.list.Count -eq 0) {
+        $cfg.agents | Add-Member -NotePropertyName "list" -NotePropertyValue @(
+            [PSCustomObject]@{ id = "main"; model = $expectedModel }
+        ) -Force
+        Write-OK "agents.list initialised with $expectedModel"
+        $changed = $true
+    } else {
+        foreach ($agent in $cfg.agents.list) {
+            if ($agent.model -ne $expectedModel) {
+                $previous = $agent.model
+                $agent.model = $expectedModel
+                Write-OK "agents.list[$($agent.id)].model: $previous -> $expectedModel"
+                $changed = $true
+            }
+        }
+    }
+
+    # Register qwen2.5:3b in the model provider list with its native 32K
+    # context. OpenClaw warns and may truncate the prompt to nothing if
+    # contextWindow < 32000 for this model (which produces stopReason=stop
+    # with zero output tokens and surfaces as an "incomplete turn" error).
+    $expectedCtx = 32000
+    $expectedMaxTokens = 4096
+    $modelId = "qwen2.5:3b"
+
+    if ($null -eq $cfg.models) {
+        $cfg | Add-Member -NotePropertyName "models" -NotePropertyValue ([PSCustomObject]@{ providers = [PSCustomObject]@{} })
+        $changed = $true
+    }
+    if ($null -eq $cfg.models.providers) {
+        $cfg.models | Add-Member -NotePropertyName "providers" -NotePropertyValue ([PSCustomObject]@{})
+        $changed = $true
+    }
+    if ($null -eq $cfg.models.providers.ollama) {
+        $cfg.models.providers | Add-Member -NotePropertyName "ollama" -NotePropertyValue ([PSCustomObject]@{
+            baseUrl = "http://127.0.0.1:11434"
+            api     = "ollama"
+            models  = @()
+        })
+        $changed = $true
+    }
+    if ($null -eq $cfg.models.providers.ollama.models) {
+        $cfg.models.providers.ollama | Add-Member -NotePropertyName "models" -NotePropertyValue @() -Force
+        $changed = $true
+    }
+
+    $existing = $cfg.models.providers.ollama.models | Where-Object { $_.id -eq $modelId }
+    if ($null -eq $existing) {
+        $cfg.models.providers.ollama.models = @($cfg.models.providers.ollama.models) + ([PSCustomObject]@{
+            id            = $modelId
+            name          = $modelId
+            reasoning     = $false
+            input         = @("text")
+            cost          = [PSCustomObject]@{ input = 0; output = 0; cacheRead = 0; cacheWrite = 0 }
+            contextWindow = $expectedCtx
+            maxTokens     = $expectedMaxTokens
+        })
+        Write-OK "registered model $modelId (ctx=$expectedCtx)"
+        $changed = $true
+    } else {
+        if ($null -eq $existing.contextWindow -or $existing.contextWindow -lt $expectedCtx) {
+            $previous = $existing.contextWindow
+            $existing.contextWindow = $expectedCtx
+            Write-OK "raised $modelId contextWindow $previous -> $expectedCtx"
+            $changed = $true
+        }
+        if ($null -eq $existing.maxTokens) {
+            $existing | Add-Member -NotePropertyName "maxTokens" -NotePropertyValue $expectedMaxTokens
+            $changed = $true
+        }
+    }
+
     if ($changed) {
-        $cfg | ConvertTo-Json -Depth 10 | Set-Content $configPath -Encoding utf8
+        $cfg | ConvertTo-Json -Depth 12 | Set-Content $configPath -Encoding utf8
         Write-OK "openclaw.json updated with required settings"
     } else {
         Write-OK "openclaw.json already configured correctly — skipped"
@@ -131,26 +222,18 @@ if (!(Test-Path $configPath)) {
 }
 
 # ── 7. Pre-create OpenClaw workspace to prevent bootstrap workflow ─────────────
+# Step 8 deploys the real .agents\*.md files from this repo into the workspace.
+# We only create the directory here and remove any stale BOOTSTRAP.md left
+# behind by a previous onboarding run.
 Write-Step "Setting up OpenClaw workspace..."
 $workspaceDir = "$openclawDir\workspace"
-if (!(Test-Path $workspaceDir)) { New-Item -ItemType Directory -Path $workspaceDir | Out-Null }
-
-$agentsPath = "$workspaceDir\AGENTS.md"
-if (!(Test-Path $agentsPath)) {
-    $agentsContent = @'
-# Agents
-
-## Session Startup
-
-Do not create or check for daily memory files automatically on session startup. Only create or update memory files when the user explicitly asks. Do not run bootstrap workflows. Answer questions directly.
-'@
-    Set-Content -Path $agentsPath -Value $agentsContent -Encoding utf8
-    Write-OK "Workspace configured"
+if (!(Test-Path $workspaceDir)) {
+    New-Item -ItemType Directory -Path $workspaceDir | Out-Null
+    Write-OK "Workspace directory created"
 } else {
-    Write-OK "Workspace already exists — skipped"
+    Write-OK "Workspace directory already exists — skipped"
 }
 
-# Remove bootstrap file if it exists
 $bootstrapPath = "$workspaceDir\BOOTSTRAP.md"
 if (Test-Path $bootstrapPath) {
     Remove-Item $bootstrapPath

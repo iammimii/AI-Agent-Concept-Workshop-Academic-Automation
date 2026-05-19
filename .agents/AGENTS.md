@@ -53,4 +53,6 @@
 
 ## Session Key
 
-This agent uses `agent:main:academic-email` as its session key. Each email has its own conversation history tracked by email hash, not subject line. Switching emails starts a fresh context window automatically.
+This agent uses session keys of the form `agent:main:academic-email-<hash>`, where `<hash>` is a short hash of the Outlook `itemId` (or, as a fallback, of `subject|from|date`). Every email therefore has its own independent conversation history. Switching emails starts a fresh context window automatically; switching back restores the previous one.
+
+The taskpane never sends email content across sessions — each session's history is loaded from OpenClaw on demand via `chat.history` and is scoped to that one email.
