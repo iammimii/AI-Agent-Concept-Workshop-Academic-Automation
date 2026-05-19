@@ -16,6 +16,9 @@ function getHttpsOptions() {
 
 module.exports = (env, argv) => {
   const isDev = argv.mode === "development";
+  // Override the OpenClaw target with OPENCLAW_WS=ws://host:port when running
+  // the gateway on a non-default port or inside WSL with a different IP.
+  const gatewayTarget = process.env.OPENCLAW_WS || "ws://127.0.0.1:18789";
   return {
     entry: {
       taskpane: "./src/taskpane/taskpane.js",
@@ -55,12 +58,17 @@ module.exports = (env, argv) => {
       proxy: [
         {
           context: ["/ai-gateway"],
-          target: "ws://127.0.0.1:18789",
+          target: gatewayTarget,
           ws: true,
           changeOrigin: true,
           pathRewrite: { "^/ai-gateway": "" },
           onProxyReqWs: (proxyReq) => {
-            proxyReq.setHeader("Origin", "http://127.0.0.1:18789");
+            try {
+              const u = new URL(gatewayTarget.replace(/^ws/, "http"));
+              proxyReq.setHeader("Origin", `http://${u.host}`);
+            } catch (_) {
+              proxyReq.setHeader("Origin", "http://127.0.0.1:18789");
+            }
           },
         },
       ],

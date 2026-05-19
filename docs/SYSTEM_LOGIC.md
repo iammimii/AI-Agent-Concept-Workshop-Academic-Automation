@@ -1,6 +1,25 @@
-# System Logic Documentation
+# System Logic Documentation (ARCHIVED — pre-pivot architecture)
 
-## AI-Powered Email Response API — Proof of Concept
+> **ARCHIVED — do not use as a current reference.**
+>
+> This document describes an earlier architecture of the project: a
+> **FastAPI + Pydantic + Groq (Llama 3.3 70B) + Microsoft Graph** Python
+> backend with REST endpoints (`/emails/inbox`, `/drafts/generate`, etc.) and
+> OAuth device-code flow.
+>
+> The project has since pivoted to an **Outlook add-in** built with
+> Office.js + a local **OpenClaw Gateway** + **Ollama (`qwen2.5:3b`)**. None
+> of the file paths, API endpoints, libraries, or models referenced below
+> exist in the current codebase.
+>
+> Kept as historical context for the workshop. See
+> [`README.md`](../README.md) and [`docs/SPRINT_2_SUMMARY.md`](./SPRINT_2_SUMMARY.md)
+> for the current architecture, and the `.agents/` folder for the deployed
+> agent configuration.
+
+---
+
+## AI-Powered Email Response API — Proof of Concept (archived)
 
 **Purpose**: A document of system logic to support workshop delivery and architectural understanding.
 

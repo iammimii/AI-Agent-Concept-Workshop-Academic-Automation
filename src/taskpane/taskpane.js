@@ -11,7 +11,12 @@ let authToken = null;
 let sessionKey = "agent:main:academic-email";
 let activeEmailId = null;
 let currentEmail = null;
-let contextSentForEmail = null; // tracks by email hash, not subject
+// Tracks which email session we've already prepended the email-context prefix
+// to, keyed by activeEmailId. activeEmailId is the stable Exchange itemId
+// when Office.js exposes one (preferred) and falls back to a hash of
+// subject|from|date — never the subject alone, which would collide for
+// emails sharing a thread or auto-reply template.
+let contextSentForEmail = null;
 let streamBuffer = "";
 let activeRunId = null;
 let waitingForResponse = false;
@@ -19,8 +24,19 @@ let rpcSeq = 0;
 let pendingRpc = new Map();
 let historyFetching = false;
 let lastShownMsgId = null;
+// Content-based dedup. flushStream() and fetchLatestReply() both can render an
+// assistant reply, and after a streamed run we still poll chat.history as a
+// safety net — so we need a way to skip the second render when it carries the
+// exact same text. Reset at the top of every sendMessage().
+let lastShownContent = "";
 let retryCount = 0;
 let retryTimer = null;
+let handshakeSent = false;
+let fetchAttempts = 0;
+let fetchTimer = null;
+let historyLoadedFor = null;
+let runProducedContent = false;
+const MAX_FETCH_ATTEMPTS = 10;
 
 // ===== DOM Helper =====
 const $ = id => document.getElementById(id);
@@ -98,54 +114,108 @@ function loadToken() {
   }
 }
 
+/** Escapes a string for safe embedding inside an HTML attribute or textarea. */
+function escapeHtml(s) {
+  return String(s || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
 /**
  * Renders an inline settings panel in the chat so the user can update their
  * gateway token and custom system instructions without leaving Outlook.
+ *
+ * Built entirely via the DOM API (createElement + .value / .textContent /
+ * Object.assign for styles) — never via innerHTML — so that a hostile
+ * authToken or persisted custom-instructions blob cannot inject script
+ * even in the (already-mitigated) case where escapeHtml ever regresses.
  */
 function showTokenPrompt() {
   const saved = getSavedSystemPrompt();
+
   const div = document.createElement("div");
   div.className = "message sys-msg";
   div.id = "settings-panel";
-  div.innerHTML = `<div class="msg-body" style="text-align:left">
-    <strong>Setup</strong><br><br>
-    <label style="font-size:11px;color:var(--text-secondary)">Gateway Token</label>
-    <input type="password" id="token-field" placeholder="Paste your gateway token..."
-      value="${authToken || ""}"
-      style="width:100%;padding:5px 8px;border:1px solid var(--border);border-radius:4px;
-             background:var(--bg-input);color:var(--text-primary);font-size:12px;
-             margin-bottom:8px;font-family:monospace"/>
-    <label style="font-size:11px;color:var(--text-secondary)">Custom Instructions (optional)</label>
-    <textarea id="prompt-field" rows="3"
-      placeholder="e.g. Always reply formally. Never use bullet points."
-      style="width:100%;padding:5px 8px;border:1px solid var(--border);border-radius:4px;
-             background:var(--bg-input);color:var(--text-primary);font-size:12px;
-             margin-bottom:8px;font-family:var(--font);resize:vertical">${saved}</textarea>
-    <button id="save-settings-btn"
-      style="padding:5px 12px;background:var(--accent);color:#fff;border:none;
-             border-radius:4px;cursor:pointer;font-size:12px">
-      Save &amp; Connect
-    </button>
-    <br><small style="color:var(--text-muted)">Token location: ~/.openclaw/openclaw.json → gateway.auth.token</small>
-  </div>`;
+
+  const body = document.createElement("div");
+  body.className = "msg-body";
+  body.style.textAlign = "left";
+
+  const title = document.createElement("strong");
+  title.textContent = "Setup";
+  body.appendChild(title);
+  body.appendChild(document.createElement("br"));
+  body.appendChild(document.createElement("br"));
+
+  const tokenLabel = document.createElement("label");
+  tokenLabel.textContent = "Gateway Token";
+  Object.assign(tokenLabel.style, { fontSize: "11px", color: "var(--text-secondary)" });
+  body.appendChild(tokenLabel);
+
+  const tokenInput = document.createElement("input");
+  tokenInput.type = "password";
+  tokenInput.id = "token-field";
+  tokenInput.placeholder = "Paste your gateway token...";
+  tokenInput.value = authToken || "";
+  Object.assign(tokenInput.style, {
+    width: "100%", padding: "5px 8px", border: "1px solid var(--border)",
+    borderRadius: "4px", background: "var(--bg-input)", color: "var(--text-primary)",
+    fontSize: "12px", marginBottom: "8px", fontFamily: "monospace",
+  });
+  body.appendChild(tokenInput);
+
+  const promptLabel = document.createElement("label");
+  promptLabel.textContent = "Custom Instructions (optional)";
+  Object.assign(promptLabel.style, { fontSize: "11px", color: "var(--text-secondary)" });
+  body.appendChild(promptLabel);
+
+  const promptArea = document.createElement("textarea");
+  promptArea.id = "prompt-field";
+  promptArea.rows = 3;
+  promptArea.placeholder = "e.g. Always reply formally. Never use bullet points.";
+  promptArea.textContent = saved;
+  Object.assign(promptArea.style, {
+    width: "100%", padding: "5px 8px", border: "1px solid var(--border)",
+    borderRadius: "4px", background: "var(--bg-input)", color: "var(--text-primary)",
+    fontSize: "12px", marginBottom: "8px", fontFamily: "var(--font)", resize: "vertical",
+  });
+  body.appendChild(promptArea);
+
+  const btn = document.createElement("button");
+  btn.id = "save-settings-btn";
+  btn.textContent = "Save & Connect";
+  Object.assign(btn.style, {
+    padding: "5px 12px", background: "var(--accent)", color: "#fff",
+    border: "none", borderRadius: "4px", cursor: "pointer", fontSize: "12px",
+  });
+  body.appendChild(btn);
+
+  body.appendChild(document.createElement("br"));
+  const hint = document.createElement("small");
+  hint.style.color = "var(--text-muted)";
+  hint.textContent = "Token location: ~/.openclaw/openclaw.json → gateway.auth.token";
+  body.appendChild(hint);
+
+  div.appendChild(body);
   $("chat-messages").appendChild(div);
 
-  setTimeout(() => {
-    const btn = document.getElementById("save-settings-btn");
-    if (!btn) return;
-    btn.addEventListener("click", () => {
-      const t = document.getElementById("token-field").value.trim();
-      const p = document.getElementById("prompt-field").value.trim();
-      if (t) {
-        try { localStorage.setItem("acad-gateway-token", t); } catch (_) {}
-        authToken = t;
-      }
-      try { localStorage.setItem("acad-custom-instructions", p); } catch (_) {}
-      div.remove();
-      addMessage("sys", "Settings saved. Connecting to gateway...");
-      connectGateway();
-    });
-  }, 80);
+  // Bind the click handler synchronously; the previous 80ms setTimeout was
+  // both racy and unnecessary now that the element is already in the DOM.
+  btn.addEventListener("click", () => {
+    const t = tokenInput.value.trim();
+    const p = promptArea.value.trim();
+    if (t) {
+      try { localStorage.setItem("acad-gateway-token", t); } catch (_) {}
+      authToken = t;
+    }
+    try { localStorage.setItem("acad-custom-instructions", p); } catch (_) {}
+    div.remove();
+    addMessage("sys", "Settings saved. Connecting to gateway...");
+    connectGateway();
+  });
 }
 
 /** Returns any custom system instructions saved by the user in the settings panel. */
@@ -175,12 +245,18 @@ function readEmail() {
       const body = result.status === Office.AsyncResultStatus.Succeeded ? result.value : "";
       currentEmail = { subject, from, to, date, body };
 
-      const newId = hashString(subject + "|" + from + "|" + date);
+      const stableId = (typeof item.itemId === "string" && item.itemId) ? item.itemId : null;
+      const newId = stableId ? hashString(stableId) : hashString(subject + "|" + from + "|" + date);
       if (newId !== activeEmailId) {
         activeEmailId = newId;
         sessionKey = `agent:main:academic-email-${newId}`;
         contextSentForEmail = null;
         lastShownMsgId = null;
+        lastShownContent = "";
+        historyLoadedFor = null;
+        cancelFetchRetry();
+        hideTyping();
+        waitingForResponse = false;
         clearChatMessages();
         if (isConnected) loadHistory();
       }
@@ -326,7 +402,13 @@ function connectGateway() {
   }
 
   socket.onopen = () => {
+    // Reset the backoff counter the moment the TCP connection is up. Previously
+    // we only reset inside sendHandshake().then(...) — if the gateway accepted
+    // the socket but never replied to `connect` we'd keep ramping the retry
+    // delay even though the network itself was healthy.
+    retryCount = 0;
     setStatus("connecting");
+    handshakeSent = false;
     // Give the server 2s to send connect.challenge; proceed anyway if it doesn't arrive.
     setTimeout(() => { if (!isConnected) sendHandshake(); }, 2000);
   };
@@ -335,17 +417,37 @@ function connectGateway() {
 
   socket.onclose = () => {
     isConnected = false;
+    handshakeSent = false;
+    historyLoadedFor = null;
     pendingRpc.clear();
     setStatus("disconnected");
     scheduleRetry();
   };
 
-  socket.onerror = () => {};
+  socket.onerror = (e) => {
+    // Network-level errors arrive here; the WebSocket spec gives us no detail.
+    // We still get an onclose right after, which handles reconnection.
+    console.warn("[gateway] WebSocket error", e);
+  };
 }
 
-/** Schedules a reconnection attempt using exponential backoff. */
+/**
+ * Schedules a reconnection attempt using exponential backoff.
+ *
+ * Previously a blanket `if (retryTimer) return;` guard would silently swallow
+ * a fresh retry request whenever a stale timer existed — including timers left
+ * behind after the socket closed but before its callback fired. That caused
+ * the UI to stay "Disconnected" indefinitely with no further reconnect
+ * attempts. We now only short-circuit when a connection attempt is already
+ * actually in flight; otherwise we clear the stale timer and schedule a new
+ * one with the current backoff.
+ */
 function scheduleRetry() {
-  if (retryTimer) return;
+  if (retryTimer) {
+    if (socket && socket.readyState === WebSocket.CONNECTING) return;
+    clearTimeout(retryTimer);
+    retryTimer = null;
+  }
   const delay = Math.min(BACKOFF_BASE * Math.pow(1.7, retryCount), BACKOFF_MAX);
   retryCount++;
   retryTimer = setTimeout(() => {
@@ -360,8 +462,18 @@ function scheduleRetry() {
  * Sends the OpenClaw connect RPC to authenticate and negotiate protocol version.
  * On success, marks the connection as ready and loads chat history for the
  * current email.
+ *
+ * The handshakeSent flag prevents double-fire: both the 2s onopen timer and
+ * the server-sent connect.challenge event can trigger this. Without the guard
+ * we used to send two parallel connect RPCs and run loadHistory() twice.
+ *
+ * The auth field carries both `token` and `password` to handle either gateway
+ * verification mode without re-onboarding (see SETUP.txt notes).
  */
 function sendHandshake() {
+  if (handshakeSent || isConnected) return;
+  handshakeSent = true;
+
   const params = {
     minProtocol: 3,
     maxProtocol: 3,
@@ -375,7 +487,7 @@ function sendHandshake() {
     role: "operator",
     scopes: ["operator.admin"],
     caps: ["tool-events"],
-    auth: { token: authToken },
+    auth: authToken ? { token: authToken, password: authToken } : {},
   };
 
   callRpc("connect", params)
@@ -383,10 +495,20 @@ function sendHandshake() {
       isConnected = true;
       retryCount = 0;
       setStatus("connected");
-      if (result && result.sessionKey) sessionKey = result.sessionKey;
-      loadHistory();
+      // We deliberately do NOT adopt result.sessionKey here. readEmail()
+      // manages sessionKey on a per-email basis; overriding it would cause
+      // the next history load to use the gateway's default session and the
+      // one after that to use the per-email key, resulting in two ~20s
+      // chat.history RPCs (which we used to log on every connect).
+      // Only load history if we already know which email we're on. If
+      // readEmail() hasn't completed yet it will trigger loadHistory()
+      // itself once the email body is parsed.
+      if (activeEmailId) loadHistory();
     })
-    .catch(() => setStatus("disconnected"));
+    .catch(() => {
+      handshakeSent = false;
+      setStatus("disconnected");
+    });
 }
 
 // ===== RPC Layer =====
@@ -463,7 +585,12 @@ function isRawToolCall(text) {
  */
 function flushStream() {
   const text = streamBuffer.trim();
-  if (text && !isRawToolCall(text)) addMessage("ai", processAIText(text));
+  if (text && !isRawToolCall(text)) {
+    addMessage("ai", processAIText(text));
+    // Record what we just rendered so a follow-up fetchLatestReply() poll
+    // doesn't re-display the same content as a duplicate bubble.
+    lastShownContent = text;
+  }
   streamBuffer = "";
 }
 
@@ -488,15 +615,32 @@ function handleEvent(evt) {
       const phase = payload.phase || payload.data?.phase || "";
       if (phase === "start") {
         activeRunId = payload.runId || null;
+        runProducedContent = false;
         showTyping();
       } else if (phase === "end" || phase === "error") {
         activeRunId = null;
+        // Capture whether the model actually produced any output BEFORE
+        // flushStream clears the buffer. If both the buffer is empty AND
+        // we never rendered an AI bubble during this run, the gateway just
+        // surfaced a zero-payload "incomplete turn" and the user would
+        // otherwise see a dead "Thinking…" dot forever.
+        const hadContent = runProducedContent || streamBuffer.trim().length > 0;
         flushStream();
         hideTyping();
-        if (waitingForResponse) {
+        if (!hadContent) {
+          // Zero-payload run (the gateway logs "incomplete turn detected …
+          // stopReason=stop payloads=0"). Surface a concrete error so the
+          // user doesn't sit watching a dead typing indicator.
+          waitingForResponse = false;
+          cancelFetchRetry();
+          const msg = payload.error?.message || payload.message ||
+            "The model returned no output. Try a shorter question, switch to a different email, or check that Ollama is running (`ollama ps` should show qwen2.5:3b loaded).";
+          addMessage("err", msg);
+        } else if (waitingForResponse) {
           waitingForResponse = false;
           fetchLatestReply();
         }
+        runProducedContent = false;
       }
       break;
     }
@@ -520,6 +664,7 @@ function handleEvent(evt) {
     case "chat.delta": {
       const chunk = payload.delta || payload.text || payload.content || "";
       if (chunk) {
+        runProducedContent = true;
         streamBuffer += chunk;
         renderStreamingBubble(streamBuffer);
       }
@@ -532,7 +677,10 @@ function handleEvent(evt) {
       const content = payload.content || payload.text || payload.message || "";
       if (content) {
         const text = typeof content === "string" ? content : JSON.stringify(content);
-        if (!isRawToolCall(text)) addMessage("ai", processAIText(text));
+        if (!isRawToolCall(text)) {
+          runProducedContent = true;
+          addMessage("ai", processAIText(text));
+        }
       }
       if (!activeRunId) hideTyping();
       break;
@@ -571,8 +719,20 @@ function handleEvent(evt) {
  * email context prefix that was prepended before sending.
  */
 function loadHistory() {
+  // Dedupe: both sendHandshake().then(...) and readEmail() (once isConnected
+  // is true) call loadHistory() for the same email. Each chat.history RPC
+  // takes ~20s on a cold gateway, so running it twice is a meaningful waste.
+  // We skip if we've already loaded history for the current sessionKey.
+  if (historyLoadedFor === sessionKey) return;
+  historyLoadedFor = sessionKey;
+
+  // Snapshot the sessionKey at call time. If the user clicks through emails
+  // quickly we don't want a late-arriving history RPC to paint stale messages
+  // onto the currently active email's chat.
+  const sessionAtCall = sessionKey;
   callRpc("chat.history", { sessionKey, limit: 50 })
     .then(result => {
+      if (sessionAtCall !== sessionKey) return;
       const msgs = extractMessages(result);
       for (const msg of msgs) {
         const text = extractText(msg);
@@ -581,51 +741,90 @@ function loadHistory() {
           const m = text.match(/User question:\s*([\s\S]*)/);
           addMessage("user", m ? m[1].trim() : text.trim());
         } else if (msg.role === "assistant") {
-          addMessage("ai", processAIText(text.trim()));
+          addMessage("ai", processAIText(text.trim(), false));
           lastShownMsgId = msg.__openclaw?.id || msg.responseId || msg.timestamp || null;
         }
       }
     })
-    .catch(() => {});
+    .catch(() => {
+      // Allow a retry on transient failure (e.g. RPC error)
+      if (sessionAtCall === sessionKey) historyLoadedFor = null;
+    });
 }
 
 /**
  * Polls the chat history for the latest assistant reply after a message is sent.
  * Used as a fallback when the streamed response was not captured via delta events.
- * Retries after 2 seconds if the newest message ID hasn't changed.
+ *
+ * Retries up to MAX_FETCH_ATTEMPTS times at 2-second intervals, then gives up
+ * with a visible error. Any pending poll is cancelled when the user switches
+ * emails (see readEmail()) so stale polls cannot land on a different session.
  */
+function scheduleFetchRetry() {
+  if (fetchTimer) return;
+  if (fetchAttempts >= MAX_FETCH_ATTEMPTS) {
+    historyFetching = false;
+    hideTyping();
+    waitingForResponse = false;
+    addMessage("err", "No reply received. Check that the AI model is running and try again.");
+    return;
+  }
+  fetchAttempts++;
+  fetchTimer = setTimeout(() => {
+    fetchTimer = null;
+    fetchLatestReply();
+  }, 2000);
+}
+
+function cancelFetchRetry() {
+  if (fetchTimer) { clearTimeout(fetchTimer); fetchTimer = null; }
+  fetchAttempts = 0;
+  historyFetching = false;
+}
+
 function fetchLatestReply() {
   if (historyFetching) return;
   historyFetching = true;
+  const sessionAtCall = sessionKey;
 
   callRpc("chat.history", { sessionKey, limit: 10 })
     .then(result => {
+      historyFetching = false;
+      // If the user switched emails while the RPC was in flight, drop this result.
+      if (sessionAtCall !== sessionKey) return;
       const msgs = extractMessages(result);
-      if (!msgs.length) {
-        historyFetching = false;
-        setTimeout(fetchLatestReply, 2000);
-        return;
-      }
+      if (!msgs.length) { scheduleFetchRetry(); return; }
       for (let i = msgs.length - 1; i >= 0; i--) {
         const msg = msgs[i];
         if (msg.role !== "assistant") continue;
         const text = extractText(msg);
+        const trimmed = text.trim();
         const msgId = msg.__openclaw?.id || msg.responseId || msg.timestamp || i;
-        if (text.trim() && msgId !== lastShownMsgId) {
-          historyFetching = false;
-          lastShownMsgId = msgId;
-          addMessage("ai", processAIText(text.trim()));
-        } else {
-          // same ID or empty body — reply not ready yet, retry
-          historyFetching = false;
-          setTimeout(fetchLatestReply, 2000);
+        if (!trimmed || msgId === lastShownMsgId) {
+          scheduleFetchRetry();
+          return;
         }
+        // Content-based dedup: when a streamed run already painted this reply
+        // via flushStream(), the post-run safety poll lands on the same text.
+        // Record the gateway id so we don't keep retrying, then return without
+        // emitting a second bubble.
+        if (trimmed === lastShownContent) {
+          lastShownMsgId = msgId;
+          cancelFetchRetry();
+          return;
+        }
+        lastShownMsgId = msgId;
+        lastShownContent = trimmed;
+        cancelFetchRetry();
+        addMessage("ai", processAIText(trimmed));
         return;
       }
-      historyFetching = false;
-      setTimeout(fetchLatestReply, 2000);
+      scheduleFetchRetry();
     })
-    .catch(() => { historyFetching = false; });
+    .catch(() => {
+      historyFetching = false;
+      scheduleFetchRetry();
+    });
 }
 
 /**
@@ -671,12 +870,40 @@ function extractText(msg) {
  *
  * @param {string} text - The message text to send
  */
+// Label-mode opt-in: only autoLabel() sets this to true for the next send,
+// so the [LABEL:X] directive is included exactly when it's relevant. Adding
+// it to every first message of an email session caused small models (e.g.
+// qwen2.5:3b) to over-refuse — they would emit stop with zero payload tokens
+// because the directive didn't fit the user's actual question. The error in
+// the gateway log was "incomplete turn detected ... stopReason=stop
+// payloads=0 — surfacing error to user".
+let nextSendIsLabelRequest = false;
+
 function sendMessage(text) {
   if (!isConnected) {
+    hideTyping();
+    waitingForResponse = false;
     addMessage("err", "Not connected to gateway. Reconnecting…");
     connectGateway();
     return;
   }
+
+  cancelFetchRetry();
+  // Each new send starts a fresh dedup window. Without this reset, a follow-up
+  // send whose reply happens to start with the same text as the previous reply
+  // would be silently swallowed by the dedup check in fetchLatestReply().
+  lastShownContent = "";
+
+  // Arm the "waiting for reply" UI synchronously here, so every caller
+  // (handleSend, draftReply, autoLabel) gets the typing indicator without
+  // having to duplicate the bookkeeping. We deliberately do NOT set these
+  // inside the callRpc .then() — the stream can finish (and reset both)
+  // before chat.send resolves, which would leave the UI stuck "thinking".
+  showTyping();
+  waitingForResponse = true;
+
+  const labelMode = nextSendIsLabelRequest;
+  nextSendIsLabelRequest = false;
 
   let fullText = text;
 
@@ -685,44 +912,66 @@ function sendMessage(text) {
     const custom = getSavedSystemPrompt();
     let prefix = "";
     if (custom) prefix += `[System instructions]\n${custom}\n\n`;
-    prefix += `[Instructions: You are an email assistant. Answer the user's question directly. Do not repeat or quote the email body in your response. Do not create memory files, do not log email content, do not ask for confirmation, do not show next steps. When asked to assign or suggest a label/priority for this email, read the email and decide: Urgent = needs immediate action or is time-sensitive, Medium = needs attention but not critical, Minor = low priority or informational. Include exactly one of [LABEL:Urgent], [LABEL:Medium], or [LABEL:Minor] at the very end of your response.]\n\n`;
+    prefix += `[Instructions: You are an email assistant. Answer the user's question directly using the email below as context. Keep replies concise. Do not invent details not present in the email.]\n\n`;
+    if (labelMode) {
+      prefix += `[Label directive: Decide one priority for this email — Urgent (needs immediate action or time-sensitive), Medium (needs attention but not critical), or Minor (low priority or informational). Write a one-sentence reason, then end your reply with exactly one of [LABEL:Urgent], [LABEL:Medium], or [LABEL:Minor] on its own line.]\n\n`;
+    }
     prefix += `[Current email context]\nSubject: ${currentEmail.subject}\nFrom: ${currentEmail.from}\nTo: ${currentEmail.to}\nDate: ${currentEmail.date}\n\nBody:\n${body}\n\n---\n\n`;
     fullText = prefix + `User question: ${text}`;
     contextSentForEmail = activeEmailId;
+  } else if (labelMode) {
+    // Subsequent label requests on the same email don't re-send the body
+    // (the agent already has it in chat history), but we still need to
+    // include the label directive so the [LABEL:X] tag is produced.
+    fullText = `[Label directive: Reply with a one-sentence reason for the priority of this email, then end with exactly one of [LABEL:Urgent], [LABEL:Medium], or [LABEL:Minor] on its own line.]\n\n${text}`;
   }
 
+  // waitingForResponse and the typing indicator are set synchronously above,
+  // not in .then() — see the comment block at the top of this function.
   callRpc("chat.send", {
     sessionKey,
     message: fullText,
     deliver: false,
     idempotencyKey: crypto.randomUUID(),
   })
-    .then(() => { waitingForResponse = true; showTyping(); })
-    .catch(err => { hideTyping(); addMessage("err", "Send failed: " + err.message); });
+    .catch(err => {
+      hideTyping();
+      waitingForResponse = false;
+      addMessage("err", "Send failed: " + err.message);
+    });
 }
 
 // ===== Actions =====
 
+// Wire prompts for action buttons. We display the same string we send so
+// that reloading conversation history shows the user exactly what they saw
+// the first time. (Previously the chat bubble said "Draft a reply to this
+// email" while the wire payload was a longer prompt, causing history to
+// re-render different text after a refresh.)
+const DRAFT_REPLY_PROMPT = "Please draft a professional reply to this email. Respond in the same language as the original email.";
+const AUTO_LABEL_PROMPT  = "Read this email and assign a priority label (Urgent, Medium, or Minor) based on its urgency. Reply with a brief reason for your choice.";
+
 /** Asks the AI to draft a professional reply to the current email. */
 function draftReply() {
   if (!currentEmail) { addMessage("err", "No email selected."); return; }
-  addMessage("user", "Draft a reply to this email");
-  showTyping();
-  waitingForResponse = true;
-  sendMessage("Please draft a professional reply to this email. Respond in the same language as the original email.");
+  addMessage("user", DRAFT_REPLY_PROMPT);
+  // sendMessage() arms showTyping() and waitingForResponse itself — no
+  // duplication needed here (used to live in both places, which made the
+  // "stuck thinking" diagnostic in B5 harder to trace).
+  sendMessage(DRAFT_REPLY_PROMPT);
 }
 
 /**
  * Asks the AI to read the email and assign a priority label (Urgent / Medium / Minor).
- * The AI appends a [LABEL:X] tag which processAIText converts into an Outlook
- * category automatically.
+ * Sets the per-send label flag so sendMessage() will inject the [LABEL:X]
+ * directive into the wire prompt. processAIText() then parses the tag out
+ * of the reply and applies the matching Outlook category.
  */
 function autoLabel() {
   if (!currentEmail) { addMessage("err", "No email selected."); return; }
-  addMessage("user", "Assign a priority label to this email");
-  showTyping();
-  waitingForResponse = true;
-  sendMessage("Read this email and assign a priority label based on its urgency. Reply with a brief reason for your choice.");
+  addMessage("user", AUTO_LABEL_PROMPT);
+  nextSendIsLabelRequest = true;
+  sendMessage(AUTO_LABEL_PROMPT);
 }
 
 /**
@@ -764,18 +1013,24 @@ function stripAITags(text) {
 /**
  * Post-processes finalised AI response text:
  * strips any echoed email context, removes trailing separators,
- * and detects a [LABEL:X] tag to automatically apply the Outlook category.
+ * and (when applyLabel is true) detects a [LABEL:X] tag to automatically
+ * apply the Outlook category.
  *
  * @param {string} text - Raw AI response text
+ * @param {boolean} [applyLabel=true] - Apply [LABEL:X] tag to Outlook. Pass
+ *   false when re-rendering stored history so we don't retroactively toggle
+ *   categories every time the user reopens an email.
  * @returns {string} Cleaned text safe to display
  */
-function processAIText(text) {
+function processAIText(text, applyLabel = true) {
   let cleaned = text.replace(/\[Current email context\][\s\S]*?---\s*/g, "").trim();
   cleaned = cleaned.replace(/\n---+\s*$/g, "").trim();
   const match = cleaned.match(/\[LABEL:(Urgent|Medium|Minor)\]/i);
   if (match) {
-    const label = match[1].charAt(0).toUpperCase() + match[1].slice(1).toLowerCase();
-    toggleCategory(label);
+    if (applyLabel) {
+      const label = match[1].charAt(0).toUpperCase() + match[1].slice(1).toLowerCase();
+      toggleCategory(label);
+    }
     cleaned = cleaned.replace(/\s*\[LABEL:[^\]]+\]/gi, "").trim();
   }
   return cleaned;
@@ -805,7 +1060,9 @@ function addMessage(role, text) {
   body.textContent = text;
   div.appendChild(body);
   container.appendChild(div);
-  scrollDown();
+  // User-sent bubbles always scroll into view; AI/system messages respect
+  // the user's current scroll position so we don't yank them mid-read.
+  scrollDown(role === "user");
 
   if (role === "ai") $("use-draft-btn").disabled = false;
 }
@@ -843,8 +1100,17 @@ function clearChatMessages() {
 function showTyping() { $("typing-indicator").style.display = "flex"; scrollDown(); }
 function hideTyping() { $("typing-indicator").style.display = "none"; }
 function setTypingLabel(text) { const l = $("typing-label"); if (l) l.textContent = text; showTyping(); }
-function scrollDown() {
+// Threshold (px) within which we consider the user "at the bottom" of the
+// chat and therefore safe to auto-scroll on new content. If the user has
+// scrolled up to re-read an earlier message we leave their viewport alone.
+const SCROLL_STICK_THRESHOLD = 48;
+
+function scrollDown(force = false) {
   const c = $("chat-messages");
+  if (!c) return;
+  const nearBottom =
+    c.scrollHeight - c.scrollTop - c.clientHeight < SCROLL_STICK_THRESHOLD;
+  if (!force && !nearBottom) return;
   requestAnimationFrame(() => { c.scrollTop = c.scrollHeight; });
 }
 
@@ -914,7 +1180,6 @@ function handleSend() {
   addMessage("user", text);
   input.value = "";
   input.style.height = "auto";
-  showTyping();
-  waitingForResponse = true;
+  // sendMessage() arms showTyping() and waitingForResponse itself.
   sendMessage(text);
 }

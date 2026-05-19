@@ -115,7 +115,7 @@ You should now see **Academic Assistant** in your Outlook ribbon.
 | Use the drafted reply | Click **Use Draft** — it opens Outlook's compose window |
 | Auto-assign a label | Click **Auto Label** — AI decides Urgent/Medium/Minor |
 | Manually label | Click **Urgent**, **Medium**, or **Minor** in the label row |
-| Keep sidebar open | Click the 📌 pin icon in the top right of the sidebar |
+| Keep sidebar open across emails | Click Outlook's built-in pin icon (📌) in the top right of the task pane — this is Outlook's pinning feature, not the add-in's |
 
 ---
 
@@ -150,6 +150,16 @@ You should now see **Academic Assistant** in your Outlook ribbon.
 | AI session management | OpenClaw Gateway (WebSocket) |
 | Build / dev server | Webpack 5 + webpack-dev-server |
 
+## Security note on `npm audit`
+
+A clean `npm install` reports **8 vulnerabilities (2 moderate, 6 high)** at the time of writing. All of them are in **dev-only** transitive dependencies — `webpack-dev-server`, `copy-webpack-plugin/serialize-javascript`, `fast-uri`, and `ws` — none of which ship in the production add-in bundle that loads into Outlook. They only run on a developer's local machine over HTTPS on `localhost:3000`.
+
+We deliberately do **not** run `npm audit fix` on this project. The autofix path resolves to a newer `office-addin-dev-certs` chain that pulls in `@azure/monitor-opentelemetry` and ~50 OpenTelemetry packages, several of which depend on a vulnerable `protobufjs@8.0.x`. The result is a worse posture (17 vulns instead of 8) plus a heavier `node_modules`. The remaining `serialize-javascript` vuln requires `npm audit fix --force` which upgrades `copy-webpack-plugin` v13 → v14 and risks breaking the existing webpack config.
+
+If a future audit run is required for compliance, the path is: upgrade `copy-webpack-plugin` to v14 and verify the build still works, then pin `office-addin-dev-certs` at a version that does not pull Azure telemetry. This is tracked as accepted residual risk for Sprint 2.
+
+---
+
 ## Architecture
 
 ```
@@ -166,3 +176,24 @@ OpenClaw Gateway  (local)
         ▼
 Ollama — qwen2.5:3b  (:11434)
 ```
+
+
+---
+
+## Agent configuration (`.agents/` folder)
+
+The agent's behaviour, personality, and capabilities are defined by three files in the `.agents/` folder. These are automatically deployed to the OpenClaw workspace when you run `npm run setup`.
+
+| File | Purpose |
+|---|---|
+| `SOUL.md` | Personality, tone, and reply style — how the agent sounds |
+| `AGENTS.md` | Operating rules — what it can do, what it must not do, how it handles each situation |
+| `TOOLS.md` | Full list of available capabilities and their limitations |
+
+If you want to change how the agent behaves or talks, edit the relevant file in `.agents/` and re-run `npm run setup` to redeploy it. The files are copied to:
+
+```
+C:\Users\<YourName>\.openclaw\workspace\
+```
+
+> These files travel with the repo. Anyone who clones and runs setup gets the same agent configuration automatically.
